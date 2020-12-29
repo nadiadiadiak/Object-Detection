@@ -1,5 +1,5 @@
 #include <WiFi.h>                //Load Wifi Library
-#include <WiFiClientSecure.h>
+#include <WiFiClientSecure.h>    //Creates a client that can connect to to a specified internet IP address
 #include "esp_camera.h"
 #include "soc/soc.h"             //Disble Brownout Problems
 #include "soc/rtc_cntl_reg.h"    //Disble Brownout Problems
@@ -75,6 +75,17 @@ void ExecuteCommand()
     Serial.println("STAIP: "+WiFi.localIP().toString());
     Feedback="STAIP: "+WiFi.localIP().toString();
   }    
+  else if (cmd=="tcp") {
+    String domain=P1;
+    int port=P2.toInt();
+    String request=P3;
+    int wait=P4.toInt();      // wait = 0 or 1
+
+    if ((port==443)||(domain.indexOf("https")==0)||(domain.indexOf("HTTPS")==0))
+      Feedback=tcp_https(domain,request,port,wait);
+    else
+      Feedback=tcp_http(domain,request,port,wait);  
+  }
   else if (cmd=="restart") {
     ESP.restart();
   }    
@@ -95,6 +106,41 @@ void ExecuteCommand()
       ledcWrite(5,P2.toInt());
     }
   }    
+  /*else if (cmd=="contrast") {
+    sensor_t * s = esp_camera_sensor_get();
+    int val = P1.toInt(); 
+    s->set_contrast(s, val);
+  }
+  else if (cmd=="brightness") {
+    sensor_t * s = esp_camera_sensor_get();
+    int val = P1.toInt();  
+    s->set_brightness(s, val);  
+  }
+  else if (cmd=="serial") {
+    Serial.println(P1); 
+  }*/     
+  else if (cmd=="detectCount") {
+    Serial.println(P1+" = "+P2); 
+    Serial.printf("FPS = (%.1ffps)");
+  }
+  /*else if (cmd=="linenotify") {    //message=xxx&stickerPackageId=xxx&stickerId=xxx
+    String token = P1;
+    String request = P2;
+    Feedback=LineNotify(token,request,1);
+    if (Feedback.indexOf("status")!=-1) {
+      int s=Feedback.indexOf("{");
+      Feedback=Feedback.substring(s);
+      int e=Feedback.indexOf("}");
+      Feedback=Feedback.substring(0,e);
+      Feedback.replace("\"","");
+      Feedback.replace("{","");
+      Feedback.replace("}","");
+    }
+  }
+  else if (cmd=="sendCapturedImageToLineNotify") { 
+    Feedback=sendCapturedImageToLineNotify(P1);
+    if (Feedback=="") Feedback="The image failed to send. <br>The framesize may be too large.";
+  }*/ 
   else if (cmd=="flash") {
     ledcAttachPin(4, 4);  
     ledcSetup(4, 5000, 8);   
@@ -130,55 +176,9 @@ void ExecuteCommand()
     int val = P1.toInt(); 
     s->set_quality(s, val);
   }
-  /*else if (cmd=="contrast") {
-    sensor_t * s = esp_camera_sensor_get();
-    int val = P1.toInt(); 
-    s->set_contrast(s, val);
-  }
-  else if (cmd=="brightness") {
-    sensor_t * s = esp_camera_sensor_get();
-    int val = P1.toInt();  
-    s->set_brightness(s, val);  
-  }
-  else if (cmd=="serial") {
-    Serial.println(P1); 
-  }*/     
-  else if (cmd=="detectCount") {
-    Serial.println(P1+" = "+P2); 
-    Serial.printf("FPS = (%.1ffps)");
-  }
-   else if (cmd!="getstill") {
+  else if (cmd!="getstill") {
     Serial.println("");
   }
-  else if (cmd=="tcp") {
-    String domain=P1;
-    int port=P2.toInt();
-    String request=P3;
-    int wait=P4.toInt();      // wait = 0 or 1
-
-    if ((port==443)||(domain.indexOf("https")==0)||(domain.indexOf("HTTPS")==0))
-      Feedback=tcp_https(domain,request,port,wait);
-    else
-      Feedback=tcp_http(domain,request,port,wait);  
-  }
-  /*else if (cmd=="linenotify") {    //message=xxx&stickerPackageId=xxx&stickerId=xxx
-    String token = P1;
-    String request = P2;
-    Feedback=LineNotify(token,request,1);
-    if (Feedback.indexOf("status")!=-1) {
-      int s=Feedback.indexOf("{");
-      Feedback=Feedback.substring(s);
-      int e=Feedback.indexOf("}");
-      Feedback=Feedback.substring(0,e);
-      Feedback.replace("\"","");
-      Feedback.replace("{","");
-      Feedback.replace("}","");
-    }
-  }
-  else if (cmd=="sendCapturedImageToLineNotify") { 
-    Feedback=sendCapturedImageToLineNotify(P1);
-    if (Feedback=="") Feedback="The image failed to send. <br>The framesize may be too large.";
-  }*/ 
   else {
     Feedback="Command is not defined.";
   }
@@ -516,11 +516,16 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       if (Model) {
         DetectImage();
       }          
-    }     
-    
+    }
     restart.onclick = function (event) {
       fetch(location.origin+'/?restart=stop');
     }    
+    /*brightness.onclick = function (event) {
+      fetch(document.location.origin+'/?brightness='+this.value+';stop');
+    } 
+    contrast.onclick = function (event) {
+      fetch(document.location.origin+'/?contrast='+this.value+';stop');
+    }*/    
     framesize.onclick = function (event) {
       fetch(document.location.origin+'/?framesize='+this.value+';stop');
     }  
@@ -530,12 +535,6 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
     quality.onclick = function (event) {
       fetch(document.location.origin+'/?quality='+this.value+';stop');
     } 
-    /*brightness.onclick = function (event) {
-      fetch(document.location.origin+'/?brightness='+this.value+';stop');
-    } 
-    contrast.onclick = function (event) {
-      fetch(document.location.origin+'/?contrast='+this.value+';stop');
-    }*/                          
     
     function ObjectDetect() {
       result.innerHTML = "Wait for loading model.";
